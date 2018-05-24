@@ -43,7 +43,7 @@ public class ChatRoom implements Runnable {
                 Message message = this.messageQueue.take();
 
                 for (Servant servant : servants) {
-                    servant.process(message);
+                    servant.write(message);   //若廣播功能改為process中處理, 即可改為write();直接送出訊息.
                 }
             }
         }
