@@ -2,18 +2,19 @@ package edu.fgu.dclab;
 
 public class LoginMessage extends AbstractMessage {
     public final String ID;
-    public final int MONEY;
-    public final String SEAT;
-    public final String EAT;
+    public final String PASSWORD;   //不希望訊息產生後被改變, 用final.
+    /*public final int MONEY;
+    public final int SEAT;
+    public final int EAT;
+*/
 
-    //public final String PASSWORD;   //不希望訊息產生後被改變, 用final.
-
-    public LoginMessage(String id, int money, String seat, String eat) {
+    public LoginMessage(String id, String password/*int money, int seat, int eat*/) {
         this.ID = id;
-        this.MONEY= money;
+        this.PASSWORD = password;
+        /*this.MONEY= money;
         this.SEAT= seat;
         this.EAT = eat;
-        //this.PASSWORD = password;
+        */
     }
 
     public int getType() {
