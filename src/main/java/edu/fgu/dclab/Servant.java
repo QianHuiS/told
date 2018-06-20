@@ -35,15 +35,14 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
             {"孟婆湯","500",null},
             {"心痛的感覺","1000",null}
     };
-    private int flag[]= {1,1,1,1,1};    //askmenu,lookme,useTime,
-    long start= 0;
-    long end= 0;
-    long useTime= 0;
-    int choke= 0;
-    int choketime= 3;
+    private int flag[]= {1,1,1,1,1};    //askmenu,lookme,useTime,askpss
+    private long start= 0;  //計時器開始
+    private int choke= 0;   //嗆到狀態
+    private int choketime= 3;   //嗆到反應次數
+    private int debttime= 0;    //負債次數
 
 
-    public Servant(Socket socket, ChatRoom room) {
+    public Servant(Socket socket, ChatRoom room) {  //建構子
         this.room = room;
         this.socket = socket;
 
@@ -59,7 +58,7 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
         greet();    //初來乍到
     }
 
-    public void process(Message message) {
+    private void process(Message message) {
         switch (message.getType()) {
             case Message.ROOM_STATE:
                 this.write(message);
@@ -74,7 +73,7 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
                     this.source =((LoginMessage) message).ID;  //取得使用者ID.
 
                     this.room.multicast(new ChatMessage(    //multicast為廣播功能.
-                        "【樓層】",
+                        "【茶樓】",
                         MessageFormat.format("{0} 走進了茶樓。", this.source)
                     ));
 
@@ -129,7 +128,7 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
             "請問這位客官如何稱呼? (請輸入暱稱)\n"
         };
 
-        for (String msg : greetings) {
+        for (String msg : greetings) {  //foreach功能, Enhanced for loop. array型態與前element型態同.
             write(new ChatMessage("店小二", msg));
         }
     }
@@ -146,19 +145,29 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
     }
 
     //入座
-    public void seat(String msg) {
+    private void seat(String msg) {
         try {
             int i = Integer.parseInt(msg.substring(5));  //取出第4個字之後的字串(玩家輸入的桌號),String解析為10進制整數.
             if (i>=1 &&i<=10) {
-                this.seat = i;
+                if(!room.checkSeat(i)){   //檢查是否坐滿
+                    room.removeSeat(this, seat);    //離開某桌.
+                    this.seat = i;
 
-                this.write(new ChatMessage(
-                                "店小二",
-                                "要去"+msg.substring(5)+"桌嗎? 好的!讓我帶您入座...\n"
-                        )
-                );
+                    this.write(new ChatMessage(
+                                    "店小二",
+                                    "要去"+msg.substring(5)+"桌嗎? 好的!讓我帶您入座...\n"
+                            )
+                    );
 
-                if(flag[0]==1) {  askmenu();  flag[0]--;}
+                    room.addSeat(this, seat);   //加入某桌.
+
+                    if(flag[0]==1) {  askmenu();  flag[0]--;}
+                } else
+                    this.write(new ChatMessage(
+                                    "店小二",
+                                    "不好意思, "+msg.substring(5)+"桌 已經坐滿了! 換一桌吧~"
+                            )
+                    );
             } else
                 this.write(new ChatMessage(
                                 "店小二",
@@ -178,8 +187,9 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
     //點餐 系統回應
     private void askmenu() {
         String[] s = {
-                "這是我們店裡的 菜單(menu) , 客官您慢慢看!",
-                "要點餐再說一聲就行了, 小的先去忙了...\n(叫出菜單輸入 menu)\n"
+                "客官有什麼疑問的話, 可以看看介紹(help)。",
+                "這是我們店裡的 菜單(menu) , 客官您慢慢看!\n" +
+                        "要點餐再說一聲就行了, 小的先去忙了...\n(叫出菜單輸入 menu)\n"
         };
 
         for (String msg : s) {
@@ -190,17 +200,17 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
     }
 
     //察看座位及銅錢
-    public void lookme() {
+    private void lookme() {
         this.write(new ChatMessage(
                         this.source,
-                        MessageFormat.format("\n你在{0}號桌的座位上, 摸了摸袖中, 自己大概還有{1}銅錢。\n(察看座位及銅錢 輸入 lookme)\n",
+                        MessageFormat.format("\n你在{0}號桌的座位上, 摸了摸袖中, 自己大概還有{1}銅錢。\n",
                                 seat, money)
                 )
         );
     }
 
     //菜單
-    public void menu() {
+    private void menu() {
         String[] str= {
                 "\n┌────────────────┐" +
                         "\n│\t\t[ 有張菜單 ]\t\t│" +
@@ -228,26 +238,31 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
     }
 
     //點餐
-    public void order(String msg) {
+    private void order(String msg) {
         if(eattime==0) {
             try {
                 int i = Integer.parseInt(msg.substring(6));  //取出第5個字之後的字串(玩家輸入的餐點),String解析為10進制整數.
                 if (i >= 1 && i <= 12) {
                     this.eat = i;
 
-                    this.room.multicast(new ChatMessage(
+                    this.room.seatMulticast(1, seat,new ChatMessage(
                             "【"+this.source+"】",
                                     MessageFormat.format("小二! 來一壺{0}!!", food[eat][0])
                             )
                     );
 
-                    this.room.multicast(new ChatMessage(
+                    this.room.seatMulticast(1, seat, new ChatMessage(
                             "【店小二】",
-                            "一壺" + food[eat][0] + "嗎? 客官還請稍候片刻, 馬上就來!\n"
+                            "一壺" + food[eat][0] + "嗎? 客官還請稍候片刻, 馬上就來!\n...\n"
                             )
                     );
 
-                    askeat();
+                    this.room.seatMulticast(2, seat, new ChatMessage(
+                            "【店小二】",
+                                    MessageFormat.format("客官 ,小的給您上茶~ 這是您點的{0}! (食用餐點輸入 eat)\n", food[eat][0])
+                            )
+                    );
+                    this.eattime= 5;
 
                 } else
                     this.write(new ChatMessage(
@@ -272,21 +287,8 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
         }
     }
 
-    //上餐 系統回應
-    private void askeat() {
-
-        this.write(new ChatMessage(
-                        "店小二",
-                        MessageFormat.format("客官~ 這是您點的{0}, \n這樣一共是{1}元... (食用餐點輸入 eat)\n",food[eat][0],food[eat][1])
-                )
-        );
-        this.money-=Integer.parseInt(food[eat][1]);
-        this.eattime= 5;
-
-        if(money<=200)  askpss();
-    }
-
-    public void eat() {
+    //用餐
+    private void eat() {
 
         if(eattime>1) {
             this.write(new ChatMessage(
@@ -296,42 +298,97 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
             );
             eattime--;
             usetime();
-        }
-        else if(eattime==1){
-            this.write(new ChatMessage(
-                            this.source,
-                            MessageFormat.format("...\n(壺中的{0}所剩無幾, 你乾脆揚起茶壺一飲而盡。)\n", food[eat][0])
+        } else if(eattime==1){
+            this.room.seatMulticast(2, seat,new ChatMessage(
+                    "【"+this.source+"】",
+                    MessageFormat.format("...\n(壺中的{0}所剩無幾, 你乾脆揚起茶壺一飲而盡。)\n", food[eat][0])
+                )
+            );
+            this.room.seatMulticast(2, seat,new ChatMessage(
+                        "【"+this.source+"】",
+                        "小二!結帳!!\n"
                     )
             );
-            usetime();
-            eat=0;
+
+                    usetime();
             eattime--;
+
+            check();
         } else {
             this.write(new ChatMessage(
-                    this.source, "唔...要點些什麼呢... (你尚未點餐, 吃啥呢!)"));
+                    this.source, "唔...要點些什麼呢... (你還沒點餐, 吃啥呢!)"));
         }
     }
-
-    public void usetime() {
+    private void usetime() {
         if(flag[2]==1) {
             start = System.currentTimeMillis(); //以毫秒為單位, 1秒=1000毫秒.
             flag[2]--;
         } else {
-            end= System.currentTimeMillis();
-            useTime= end -start;
+            long end= System.currentTimeMillis();
+            long useTime= end -start;
             start= end;
-            end=0;
             if(useTime<10*1000)
                 choke++;
         }
     }
 
     //嗆到的表現
-    public void choke(String msg) {
+    private String choke(String msg) {
         int sumlenght= msg.length();
         //this.write(new ChatMessage("測試", msg.substring(sumlenght/2)));
-        msg=msg.replaceFirst(msg.substring(sumlenght/2),"...咳!咳咳!"); //將原字串的1/3-2/3處替換成咳咳.
-        this.room.multicast(new ChatMessage("【"+this.source+"】", msg+" (嗆到了)"));
+        msg=msg.replaceFirst(msg.substring(sumlenght/2),"...咳!咳咳!")+" (嗆到了)"; //將原字串的1/3-2/3處替換成咳咳.
+        return msg;
+    }
+
+    //結帳 系統回應
+    private void check() {
+        this.room.seatMulticast(2, seat,new ChatMessage(
+                "【店小二】",
+                        MessageFormat.format("好的! 這樣一共是{0}元...\n",food[eat][1])
+                )
+        );
+        this.money-=Integer.parseInt(food[eat][1]);
+        if(money<0){
+
+            this.debttime=-(money/5);
+            this.room.seatMulticast(2, seat,new ChatMessage(
+                    "【店小二】",
+                        MessageFormat.format("這位客官, 您這錢數目好像不對呀! 只有{0}元?",
+                                Integer.valueOf(food[eat][1])+money)
+                    )
+            );
+            this.room.seatMulticast(2, seat,new ChatMessage(
+                    "【"+source+"】",
+                        "我...我真的沒錢啦~ 通融一下吧...?"
+                    )
+            );
+            this.room.seatMulticast(2, seat,new ChatMessage(
+                    "【店小二】",
+                        MessageFormat.format("本茶樓不接受白食客! 你給我去打雜償還債務!!!\n" +
+                                        "(依據您的債務, 請輸入{0}次work打雜還債.)\n",
+                                debttime)
+                    )
+            );
+            this.room.seatMulticast(1, seat,new ChatMessage(
+                        "【茶樓】",
+                        source+"因欠款被抓去打雜了."
+                    )
+            );
+            eat=0;
+        }
+
+        if(money<=200 && flag[3]==1)  askpss();
+    }
+
+    //打雜
+    private void work() {
+        debttime--;
+        if(debttime!=0)
+            this.write(new ChatMessage(source, MessageFormat.format("...只要再努力打雜{0}次就可以了!!", debttime)));
+        else{
+            this.room.seatMulticast(1, seat, new ChatMessage("【"+source+"】","終於打雜完了啊啊啊啊!!!!!"));
+            money=0;
+        }
     }
 
     //猜拳 系統回應
@@ -342,13 +399,14 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
         };
 
         for (String msg : s) {
-            this.room.multicast(new ChatMessage("【吳吉郎】", msg));
+            this.room.seatMulticast(2, seat,new ChatMessage("【吳吉郎】", msg));
         }
+        flag[3]=0;
 
     }
 
     //猜拳
-    public void paperScissorsStone(String msg){
+    private void paperScissorsStone(String msg){
         try {
             msg = msg.substring(4);
             if (msg.equals("剪刀") || msg.equals("石頭") || msg.equals("布")) {
@@ -378,12 +436,12 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
                     this.write(new ChatMessage("吳吉郎", "你還太嫩了!"));
                 }
                 if ("剪刀".equals(msg) & x == 3) {
-                    this.write(new ChatMessage("吳吉郎", "哼!別誤會了!這是故意讓你的!\n(貴公子留下了50銅板)"));
-                    this.money+=50;
+                    this.write(new ChatMessage("吳吉郎", "哼!別誤會了!這是故意讓你的! (貴公子留下了100銅板)"));
+                    this.money+=100;
                 }
                 if ("石頭".equals(msg) & x == 1) {
-                    this.write(new ChatMessage("吳吉郎", "哼!別誤會了!這是故意讓你的!\n(貴公子留下了50銅板"));
-                    this.money+=50;
+                    this.write(new ChatMessage("吳吉郎", "哼!別誤會了!這是故意讓你的! (貴公子留下了100銅板"));
+                    this.money+=100;
                 }
                 if ("石頭".equals(msg) & x == 2) {
                     this.write(new ChatMessage("吳吉郎", "哎呀!好可惜呀!"));
@@ -392,8 +450,8 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
                     this.write(new ChatMessage("吳吉郎", "你還太嫩了!"));
                 }
                 if ("布".equals(msg) & x == 1) {
-                    this.write(new ChatMessage("吳吉郎", "哼!別誤會了!這是故意讓你的!\n(貴公子留下了50銅板"));
-                    this.money+=50;
+                    this.write(new ChatMessage("吳吉郎", "哼!別誤會了!這是故意讓你的! (貴公子留下了100銅板"));
+                    this.money+=100;
                 }
                 if ("布".equals(msg) & x == 2) {
                     this.write(new ChatMessage("吳吉郎", "你還太嫩了!"));
@@ -420,56 +478,112 @@ public class Servant implements Runnable {  //服務客戶端的系統(一對一
         ));*/
     }
     //取得系統時間
-    public String getDateTime() {
+    private String getDateTime() {
         DateFormat shortFormat =
                 DateFormat.getDateTimeInstance(
                         DateFormat.SHORT, DateFormat.SHORT);
 
 //        SimpleDateFormat sdFormat = new SimpleDateFormat("yyyy/MM/dd hh:mm:ss");
         Date date = new Date();
-        String strDate = shortFormat.format(date);
-        return strDate;
+        return shortFormat.format(date);
+    }
+
+    //查詢指令列表
+    private void help(){
+        String[] str= {
+                "\nhelp:\n\t就是你在看的這些ㄚ。" +
+                        "\ntime?\n\t告訴你現在的時間。" +
+                        "\nmenu\n\t給你看菜單。" +
+                        "\nlookme\n\t看你在哪桌.剩多少錢。" +
+                        "\nseat 數字:\n\t你要去哪桌, 數字對應桌號1-10。" +
+                        "\norder 數字:\n\t你要吃什麼, 數字對應menu中1-12的餐點; 沒錢的白食客就去打雜吧!" +
+                        "\neat:\n\t吃東西, 吃5次會把餐點吃完; 吃太快就準備嗆到吧!" +
+                        "\npss 出拳:\n\t找貴公子猜拳(看上去是個愛撒錢的傢伙), 出拳對應「剪刀/石頭/布」3種。" +
+                        "\ntalk 內容:\n\t小聲說話(只有同桌的人聽得到), 內容就是你想說啥。" +
+                        "\nshout 內容:\n\t吶喊講話(整個茶樓都聽得到), 內容就是你想說啥。\n"
+        };
+
+        for(String instruction: str){
+            write(new ChatMessage("指令介紹", instruction));
+        }
     }
 
     //功能指令
-    public void instruction(Message message) {
+    private void instruction(Message message) {
+
         String msg=((ChatMessage)message).MESSAGE;
-        if(msg.startsWith("time?"))    //判斷是否以seat開頭.
-            time();
+        if(debttime==0){
+            if(msg.startsWith("help"))
+                help();
 
-        else if(msg.startsWith("seat")) {
-            seat(msg);
-        }
+            else if(msg.startsWith("time?"))    //判斷是否以seat開頭.
+                time();
 
-        else if(msg.startsWith("menu"))
-            menu();
+            else if(msg.startsWith("seat")) {
+                seat(msg);
+            }
 
-        else if(msg.startsWith("lookme"))
-            lookme();
+            else if(msg.startsWith("menu"))
+                menu();
 
-        else if(msg.startsWith("order")) {
-            order(msg);
-        }
+            else if(msg.startsWith("lookme"))
+                lookme();
 
-        else if(msg.startsWith("eat")) {
-            eat();
-        }
+            else if(msg.startsWith("order")) {
+                order(msg);
+            }
 
-        else if(msg.startsWith("pss")) {
-            paperScissorsStone(msg);
-        }
+            else if(msg.startsWith("eat")) {
+                eat();
+            }
 
-        else {
-            //this.write(new ChatMessage("測試","choke="+choke+"\nchoketime="+choketime+"\n"));
-            if (choke >0) {
-                choke(msg);
-                choketime--;
-                if (choketime == 0) {
-                    choketime=3;
-                    choke--;
+            else if(msg.startsWith("pss")) {
+                paperScissorsStone(msg);
+            }
+
+            else if(msg.startsWith("talk")) {
+                msg = msg.substring(5);  //取出第4個字之後的字串(玩家輸入的餐點),String解析為10進制整數.
+                if (choke >0) { //若為嗆到狀態
+                    msg=choke(msg); //將所說內容改為嗆到內容
+                    choketime--;
+                    if (choketime == 0) {
+                        choketime=3;
+                        choke--;
+                    }
                 }
-            } else
-                this.room.multicast(new ChatMessage("【"+this.source+"】", msg));
+                this.room.seatMulticast(2, seat, new ChatMessage("【"+this.source+"】低語", msg));
+            }
+
+            else if(msg.startsWith("shout")) {
+                msg = msg.substring(6);
+                if (choke >0) { //若為嗆到狀態
+                    msg=choke(msg); //將所說內容改為嗆到內容
+                    choketime--;
+                    if (choketime == 0) {
+                        choketime=3;
+                        choke--;
+                    }
+                }
+                this.room.multicast(new ChatMessage("【"+this.source+"】大喊", msg));
+            }
+
+            else {  //無指令直接說話
+                //this.write(new ChatMessage("測試","choke="+choke+"\nchoketime="+choketime+"\n"));
+                if (choke >0) { //若為嗆到狀態
+                    msg=choke(msg); //將所說內容改為嗆到內容
+                    choketime--;
+                    if (choketime == 0) {
+                        choketime=3;
+                        choke--;
+                    }
+                }
+                this.room.seatMulticast(1, seat, new ChatMessage("【"+this.source+"】", msg));
+            }
+        } else{
+            if(msg.startsWith("work"))
+                work();
+            else
+                write(new ChatMessage("店小二", source+"你張望什麼呢! 給我專心打雜!!!"));
         }
     }
 
